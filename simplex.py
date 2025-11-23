@@ -1,5 +1,3 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Универсальный симплекс-метод с правилом Блэнда для задач max/min.
 """
@@ -107,8 +105,12 @@ def simplex_blend(A: Matrix, b: List[Fraction], c: List[Fraction], goal: str, n:
         tab.append(row)
     
     # Строка целевой функции
-    # В симплекс-таблице всегда храним: f - c^T x = 0
-    obj_row = [-coeff for coeff in c]  # -c для исходных переменных
+    # Для max задачи храним: f - c^T x = 0, для min: f + c^T x = 0
+    if goal == 'max':
+        obj_row = [-coeff for coeff in c]  # -c для исходных переменных
+    else:  # min
+        obj_row = [coeff for coeff in c]   # +c для исходных переменных
+        
     obj_row.extend([Fraction(0) for _ in range(m)])  # 0 для дополнительных переменных  
     obj_row.append(Fraction(0))  # Правая часть
     tab.append(obj_row)
@@ -123,28 +125,39 @@ def simplex_blend(A: Matrix, b: List[Fraction], c: List[Fraction], goal: str, n:
     while True:
         iter_count += 1
         
-        # УНИВЕРСАЛЬНАЯ ПРОВЕРКА ОПТИМАЛЬНОСТИ:
-        # В симплекс-таблице всегда: f - c^T x = 0
-        # Поэтому оптимально, когда все коэффициенты в целевой строке >= 0
-        # (это работает и для max, и для min при правильном преобразовании)
+        # Проверка оптимальности в зависимости от типа задачи
         optimal = True
-        for j in range(n + m):
-            if tab[m][j] < 0:  # Если есть отрицательный - не оптимально
-                optimal = False
-                break
+        if goal == 'max':
+            # Для max: все коэффициенты в целевой строке должны быть >= 0
+            for j in range(n + m):
+                if tab[m][j] < 0:
+                    optimal = False
+                    break
+        else:  # min
+            # Для min: все коэффициенты в целевой строке должны быть <= 0
+            for j in range(n + m):
+                if tab[m][j] > 0:
+                    optimal = False
+                    break
                 
         if optimal:
             print("\n✓ Достигнуто оптимальное решение")
             break
-        
-        # УНИВЕРСАЛЬНЫЙ ВЫБОР ВЕДУЩЕГО СТОЛБЦА:
-        # Выбираем первый столбец с отрицательным коэффициентом
-        # (это работает для обеих задач благодаря хранению f - c^T x = 0)
+            
+        # Выбор ведущего столбца
         pivot_col = -1
-        for j in range(n + m):
-            if tab[m][j] < 0:
-                pivot_col = j
-                break
+        if goal == 'max':
+            # Для max: первый столбец с отрицательным коэффициентом
+            for j in range(n + m):
+                if tab[m][j] < 0:
+                    pivot_col = j
+                    break
+        else:  # min
+            # Для min: первый столбец с положительным коэффициентом
+            for j in range(n + m):
+                if tab[m][j] > 0:
+                    pivot_col = j
+                    break
         
         if pivot_col == -1:
             break
@@ -157,12 +170,13 @@ def simplex_blend(A: Matrix, b: List[Fraction], c: List[Fraction], goal: str, n:
         
         if not valid_rows:
             # Если нет допустимых строк, задача неограничена
-            print(f"\n! Целевая функция не ограничена (столбец {pivot_col})")
-            # Возвращаем текущее решение как лучшее найденное
+            if goal == 'max':
+                print(f"\n! Целевая функция не ограничена сверху (столбец {pivot_col})")
+            else:
+                print(f"\n! Целевая функция не ограничена снизу (столбец {pivot_col})")
             break
         
         # Выбор ведущей строки по правилу Блэнда
-        # Сначала находим минимальное отношение
         min_ratio = None
         min_ratio_rows = []
         
@@ -209,21 +223,16 @@ def simplex_blend(A: Matrix, b: List[Fraction], c: List[Fraction], goal: str, n:
             x[basis_var] = tab[i][-1]
         else:  # Дополнительная переменная
             s[basis_var - n] = tab[i][-1]
-    
-    # ВЫЧИСЛЕНИЕ ЦЕЛЕВОЙ ФУНКЦИИ:
-    # В таблице хранится f - c^T x = 0, поэтому f = c^T x
-    # Но значение f также равно - (правый нижний элемент таблицы)
-    obj_value_from_table = -tab[m][-1]
-    
-    # Вычисляем также по найденным x для проверки
-    obj_value_from_x = Fraction(0)
+            
+    # Вычисляем значение целевой функции
+    obj_value = Fraction(0)
     for i in range(n):
-        obj_value_from_x += c[i] * x[i]
+        obj_value += c[i] * x[i]
     
-    # Для согласованности используем вычисление по x
-    obj_value = obj_value_from_x
+    # Для max задачи значение из таблицы будет отрицательным
+    obj_value_from_table = -tab[m][-1] if goal == 'max' else tab[m][-1]
     
-    print(f"\nПроверка: f из таблицы = {obj_value_from_table}, f из x = {obj_value_from_x}")
+    print(f"\nПроверка: f из таблицы = {obj_value_from_table}, f из x = {obj_value}")
     
     return obj_value, x, s, iter_count
 
@@ -263,7 +272,9 @@ def main():
         print('\nПроверка ограничений:')
         for i in range(len(A)):
             lhs = sum(A[i][j] * x[j] for j in range(n))
-            print(f'  Ограничение {i+1}: {lhs} <= {b[i]} ({lhs <= b[i]})')
+            constraint_type = "="  # все ограничения приведены к равенствам
+            satisfied = (lhs == b[i])
+            print(f'  Ограничение {i+1}: {lhs} {constraint_type} {b[i]} ({satisfied})')
         
     except Exception as e:
         print(f"Ошибка: {e}")
