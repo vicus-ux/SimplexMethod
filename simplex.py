@@ -337,9 +337,17 @@ class SimplexSolver:
 
         # Объектное значение: так как мы работаем в форме минимизации (c предварительно изменён),
         # значение в z-строке в RHS — это значение c^T x; возвращаем с учётом исходной цели
-        val = sum(c * xi for c, xi in zip(self.original_c, x))
-        obj_value = val if self.goal == 'max' else -val
+        # Вычисляем значение целевой функции по исходным коэффициентам (без каких-либо инверсий)
+        val = FractionWithPrint(0)
+        for ci, xi in zip(self.original_c, x):
+            val += ci * xi
+
+        # Возвращаем значение в том виде, как оно задано в исходном файле.
+        # (self.original_c соответствует тому, что написано в файле; поэтому
+        #  для 'min' получим минимальное значение, для 'max' — максимальное.)
+        obj_value = val
         return obj_value, x, s
+
     
     def solve(self) -> Tuple[Fraction, List[Fraction], List[Fraction], int]:
         """Решить задачу двухфазным симплекс-методом."""
