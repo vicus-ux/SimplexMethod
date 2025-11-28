@@ -4,7 +4,7 @@
 
 import sys
 from fractions import Fraction
-from typing import List, Tuple, Optional
+from typing import List, Tuple
 
 Matrix = List[List[Fraction]]
 
@@ -38,12 +38,7 @@ def read_task(filename: str) -> Tuple[Matrix, List[Fraction], List[Fraction], st
         if '>=' in raw and raw.startswith('x') and '0' in raw:
             continue
 
-        op = None
-        if '=' in raw:
-            op = '='
-        else:
-            continue  
-
+        op = '='
 
         lhs_str, rhs_str = map(str.strip, raw.split(op, 1))
         lhs = [FractionWithPrint(x) for x in lhs_str.split()]
@@ -53,10 +48,6 @@ def read_task(filename: str) -> Tuple[Matrix, List[Fraction], List[Fraction], st
         A.append(lhs)
         b.append(rhs)
         constraints.append('=')
-
-
-    if not A:
-        raise ValueError('Нет ограничений')
 
     return A, b, c, goal, constraints
 
@@ -93,7 +84,7 @@ class SimplexSolver:
             headers.append('b')
             
             print('Basis | ' + ' | '.join(f'{h:>8}' for h in headers))
-            print('-' * (8 + 10 * len(headers)))
+            print('-' * (14 + 10 * len(headers)))
             
             for i in range(self.m):
                 basis_var = self.get_var_name(self.basis[i])
@@ -110,7 +101,7 @@ class SimplexSolver:
             headers.append('b')
             
             print('Basis | ' + ' | '.join(f'{h:>8}' for h in headers))
-            print('-' * (8 + 10 * len(headers)))
+            print('-' * (12 + 10 * len(headers)))
             
             for i in range(self.m):
                 basis_var = self.get_var_name(self.basis[i])
@@ -132,29 +123,28 @@ class SimplexSolver:
     
     def find_pivot(self) -> Tuple[int, int]:
         """Найти опорный элемент по правилу Блэнда (выбираем наименьший индекс входящей переменной)."""
-        # Поиск ведущего столбца: по правилу Блэнда возьмём наименьший j с отрицательной reduced cost
         pivot_col = -1
-        for j in range(len(self.tab[0]) - 1):  # исключаем RHS
+        #находим первый отрицательный элемент (выбираем столбец - эта переменная, которая войдет в базис)
+        for j in range(len(self.tab[0]) - 1): 
             if self.tab[self.m][j] < 0:
                 pivot_col = j
                 break
         
         if pivot_col == -1:
-            return -1, -1  # оптимально
+            return -1, -1  
             
-        # Поиск допустимых строк для pivot_col
         valid_rows = []
         for i in range(self.m):
             if self.tab[i][pivot_col] > 0:
                 valid_rows.append(i)
         
         if not valid_rows:
-            return -1, -1  # неограничено
+            return -1, -1  
             
-        # Выбор ведущей строки по правилу минимального отношения (RHS / a_ij)
         min_ratio = None
         min_ratio_rows = []
         
+        #вычисляем минимальный коэффициент, между выбранным столбцом и слотвцом b
         for i in valid_rows:
             if self.tab[i][pivot_col] > 0:
                 ratio = self.tab[i][-1] / self.tab[i][pivot_col]
@@ -164,15 +154,13 @@ class SimplexSolver:
                 elif ratio == min_ratio:
                     min_ratio_rows.append(i)
         
-        # Среди строк с минимальным отношением выбираем с минимальным индексом базисной переменной (правило Блэнда)
+        #среди строк с минимальным отношением выбираем с минимальным индексом базисной переменной (правило Блэнда)
         pivot_row = min(min_ratio_rows, key=lambda i: self.basis[i])
         
         return pivot_row, pivot_col
     
     def has_negative_in_obj(self) -> bool:
-        """True, если можно улучшить ЦФ (поиск отрицательных reduced costs)."""
-        # После преобразования goal->c (max->-c) мы всегда работаем в форме минимизации,
-        # поэтому улучшается цель при наличии отрицательных значений в z/w-строке.
+        """True, если можно улучшить ЦФ."""
         return any(self.tab[self.m][j] < 0 for j in range(len(self.tab[0]) - 1))
     
     def iterate(self, pivot_row: int, pivot_col: int):
@@ -182,32 +170,28 @@ class SimplexSolver:
         print(f"Ведущий элемент: строка {pivot_row+1} ({self.get_var_name(self.basis[pivot_row])}), "
               f"столбец {pivot_col} ({self.get_var_name(pivot_col)}), значение: {pivot_val}")
         
-        # Нормализуем ведущую строку
+        #нормализуем ведущую строку
         for j in range(len(self.tab[pivot_row])):
             self.tab[pivot_row][j] /= pivot_val
         
-        # Обновляем остальные строки
+        #обновляем остальные строки
         for i in range(len(self.tab)):
             if i != pivot_row:
                 factor = self.tab[i][pivot_col]
                 for j in range(len(self.tab[i])):
                     self.tab[i][j] -= factor * self.tab[pivot_row][j]
         
-        # Обновляем базис
         self.basis[pivot_row] = pivot_col
         self.iter_count += 1
     
     def previous_phase(self):
-        """Вычитает единицы из целевой функции, изменяя симплекс-таблицу."""
+        """Подготовительная фаза, перед первой итерацией фазы 1"""
         print("\n--- Вычитание единиц из целевой функции ---")
         
-        # Проходим по всем базисным переменным
+
         for i in range(self.m):
-            basis_col = self.basis[i]  # столбец базисной переменной
-            
-            # Если базисная переменная имеет коэффициент 1 в целевой функции
+            basis_col = self.basis[i]  
             if self.tab[self.m][basis_col] == 1:
-                # Вычитаем всю строку i из целевой строки
                 for j in range(len(self.tab[self.m])):
                     self.tab[self.m][j] -= self.tab[i][j]
                 
@@ -227,6 +211,7 @@ class SimplexSolver:
         self.tab = []
         self.basis = []
 
+        #согздание начальной симплекс-таблицы
         for i in range(self.m):
             row = self.A[i].copy()
                  
@@ -240,6 +225,7 @@ class SimplexSolver:
             row.append(self.b[i])
             self.tab.append([FractionWithPrint(x) for x in row])
 
+        #целевая функция
         z_row = [FractionWithPrint(0) for _ in range(self.n + self.m + 1)] 
 
         for i in range(self.m):
@@ -247,12 +233,11 @@ class SimplexSolver:
             z_row[basis_col] = FractionWithPrint(1) 
 
         self.tab.append(z_row)
-       
         self.iter_count = 0
         self.print_table(phase=1)
-
        
         self.previous_phase()
+
         while self.has_negative_in_obj():
             r, c = self.find_pivot()
             if r == -1:
@@ -261,9 +246,7 @@ class SimplexSolver:
             self.iterate(r, c)
             self.print_table(phase=1)
 
-        print("\nПричина завершения фазы 1:")
-
-        print("✓ Фаза 1 завершена\n")
+        print("Фаза 1 завершена\n")
         return True
     
     def iterate_phase2(self):
@@ -294,21 +277,18 @@ class SimplexSolver:
         print("ФАЗА 2: Решение исходной задачи")
         print("="*60)
         
+        #урезаем таблицу (благодарим прошлую матрицу за участие)
         for i in range(self.m):
             self.tab[i] = self.tab[i][:self.n] + [self.tab[i][-1]]
     
         self.tab = self.tab[:self.m] 
 
-        z_row = [FractionWithPrint(0) for _ in range(self.n + 1)]  # +1 для RHS
-
+        z_row = [FractionWithPrint(0) for _ in range(self.n + 1)]  
         
         for j in range(min(self.n, len(self.c))):  
             z_row[j] = self.c[j]
     
         self.tab.append(z_row) 
-        
-        self.iter_count = 0
-
         self.tab[self.m] = z_row
         self.iter_count = 0
 
