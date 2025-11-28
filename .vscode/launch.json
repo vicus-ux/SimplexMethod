@@ -1,0 +1,15 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Python: Отладка симплекс-метода",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/simplex.py",
+            "args": ["task.txt"],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "stopOnEntry": false
+        }
+    ]
+}
